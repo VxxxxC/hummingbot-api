@@ -1,7 +1,14 @@
+import logging
+import warnings
 from typing import List
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_logger = logging.getLogger(__name__)
+
+# Credentials that are insecure and must be changed in production
+_WEAK_PASSWORDS = {"admin", "password", "a", "hummingbot", "hummingbot-api", ""}
 
 
 class BrokerSettings(BaseSettings):
@@ -69,6 +76,29 @@ class SecuritySettings(BaseSettings):
         env_prefix="",
         extra="ignore"  # Ignore extra environment variables
     )
+
+    @field_validator("password")
+    @classmethod
+    def warn_weak_api_password(cls, v: str) -> str:
+        if v in _WEAK_PASSWORDS or len(v) < 8:
+            warnings.warn(
+                "SecuritySettings.password is weak or still set to the default value. "
+                "Set a strong PASSWORD environment variable before exposing this API.",
+                stacklevel=2,
+            )
+        return v
+
+    @field_validator("config_password")
+    @classmethod
+    def warn_weak_config_password(cls, v: str) -> str:
+        if v in _WEAK_PASSWORDS or len(v) < 8:
+            warnings.warn(
+                "SecuritySettings.config_password is weak or still set to the default value ('a'). "
+                "Exchange API keys are encrypted with this password. "
+                "Set a strong CONFIG_PASSWORD environment variable.",
+                stacklevel=2,
+            )
+        return v
 
 
 class AWSSettings(BaseSettings):

@@ -24,10 +24,20 @@ def _authenticate_websocket(websocket: WebSocket) -> bool:
     """
     Authenticate a WebSocket connection using Basic Auth from headers or query params.
 
+    Supported methods (in order of preference):
+      1. Authorization: Basic <base64(user:pass)> header
+      2. ?token=<base64(user:pass)> query parameter
+
+    Plain-text username/password query parameters are NOT supported to avoid
+    credentials appearing in server access logs, browser history, and proxies.
+
     Returns True if authenticated (or debug mode), False otherwise.
     """
     if settings.security.debug_mode:
         return True
+
+    ws_user: str = ""
+    ws_pass: str = ""
 
     # Try Authorization header first
     auth_header = websocket.headers.get("authorization", "")
@@ -47,9 +57,8 @@ def _authenticate_websocket(websocket: WebSocket) -> bool:
             except Exception:
                 return False
         else:
-            # Fallback to query parameters
-            ws_user = websocket.query_params.get("username", "")
-            ws_pass = websocket.query_params.get("password", "")
+            # No recognised auth method supplied
+            return False
 
     correct_user = secrets.compare_digest(
         ws_user.encode(), settings.security.username.encode()
@@ -80,8 +89,7 @@ async def market_data_websocket(websocket: WebSocket) -> None:
     """
     WebSocket endpoint for streaming market data.
 
-    Authentication: Basic Auth via Authorization header, ?token=base64(user:pass),
-    or query params (?username=...&password=...).
+    Authentication: Basic Auth via Authorization header or ?token=base64(user:pass).
 
     Subscribe/unsubscribe protocol:
         -> {"action": "subscribe", "type": "candles", "connector": "binance",
@@ -161,8 +169,8 @@ async def executors_websocket(websocket: WebSocket) -> None:
     """
     WebSocket endpoint for streaming executor data.
 
-    Authentication: Basic Auth via Authorization header, ?token=base64(user:pass),
-    or query params (?username=...&password=...).
+    Authentication: Basic Auth via Authorization header or ?token=base64(user:pass).
+
 
     Subscribe/unsubscribe protocol:
         -> {"action": "subscribe", "type": "executor_summary", "update_interval": 2.0}
