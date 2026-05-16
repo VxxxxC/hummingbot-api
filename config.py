@@ -84,7 +84,7 @@ class SecuritySettings(BaseSettings):
             warnings.warn(
                 "SecuritySettings.password is weak or still set to the default value. "
                 "Set a strong PASSWORD environment variable before exposing this API.",
-                stacklevel=2,
+                stacklevel=3,
             )
         return v
 
@@ -96,7 +96,7 @@ class SecuritySettings(BaseSettings):
                 "SecuritySettings.config_password is weak or still set to the default value ('a'). "
                 "Exchange API keys are encrypted with this password. "
                 "Set a strong CONFIG_PASSWORD environment variable.",
-                stacklevel=2,
+                stacklevel=3,
             )
         return v
 

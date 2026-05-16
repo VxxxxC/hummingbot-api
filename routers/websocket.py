@@ -36,8 +36,8 @@ def _authenticate_websocket(websocket: WebSocket) -> bool:
     if settings.security.debug_mode:
         return True
 
-    ws_user: str = ""
-    ws_pass: str = ""
+    ws_user: str
+    ws_pass: str
 
     # Try Authorization header first
     auth_header = websocket.headers.get("authorization", "")

@@ -210,10 +210,11 @@ class FileSystemUtil:
         if not file_name or '/' in file_name or '\\' in file_name:
             raise ValueError(f"Invalid file name: '{file_name}'")
 
-        dir_path = self._safe_resolve(directory)
+        # Validate the complete destination path (directory + file_name) against base_path
+        file_path = self._safe_resolve(os.path.join(directory, file_name))
+        dir_path = os.path.dirname(file_path)
         os.makedirs(dir_path, exist_ok=True)
 
-        file_path = os.path.join(dir_path, file_name)
         if not override and os.path.exists(file_path):
             raise FileExistsError(f"File '{file_name}' already exists in '{directory}'.")
 
@@ -271,17 +272,13 @@ class FileSystemUtil:
     def read_yaml_file(self, file_path: str) -> dict:
         """
         Reads a YAML file and returns the data as a dictionary.
-        :param file_path: The path to the YAML file (relative to base_path or absolute).
+        :param file_path: The path to the YAML file (relative to base_path).
         :return: Dictionary containing the YAML file data.
         :raises FileNotFoundError: If the file doesn't exist.
         :raises PermissionError: If the path escapes the base directory.
         :raises yaml.YAMLError: If the YAML is invalid.
         """
-        # Absolute paths (used internally) bypass the traversal check
-        if os.path.isabs(file_path):
-            full_path = file_path
-        else:
-            full_path = self._safe_resolve(file_path)
+        full_path = self._safe_resolve(file_path)
         if not os.path.exists(full_path):
             raise FileNotFoundError(f"YAML file '{file_path}' not found")
 
@@ -360,15 +357,11 @@ class FileSystemUtil:
     def ensure_file_and_dump_text(self, file_path: str, text: str) -> None:
         """
         Ensures that the directory for the file exists, then writes text to a file.
-        :param file_path: The file path to write to (relative to base_path or absolute).
+        :param file_path: The file path to write to (relative to base_path).
         :param text: The text to write.
         :raises PermissionError: If permission is denied or path escapes the base directory.
         """
-        # Absolute paths (used internally for credential writes) bypass the check
-        if os.path.isabs(file_path):
-            full_path = file_path
-        else:
-            full_path = self._safe_resolve(file_path)
+        full_path = self._safe_resolve(file_path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         with open(full_path, "w", encoding='utf-8') as f:
             f.write(text)
@@ -385,15 +378,12 @@ class FileSystemUtil:
     def save_model_to_yml(self, yml_path: str, cm: ClientConfigAdapter) -> None:
         """
         Save a ClientConfigAdapter model to a YAML file.
-        :param yml_path: Path to the YAML file (relative to base_path or absolute).
+        :param yml_path: Path to the YAML file (relative to base_path).
         :param cm: The ClientConfigAdapter to save.
         :raises PermissionError: If permission is denied or path escapes the base directory.
         """
         try:
-            if os.path.isabs(yml_path):
-                full_path = yml_path
-            else:
-                full_path = self._safe_resolve(yml_path)
+            full_path = self._safe_resolve(yml_path)
             cm_yml_str = cm.generate_yml_output_str_with_comments()
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
             with open(full_path, "w", encoding="utf-8") as outfile:
