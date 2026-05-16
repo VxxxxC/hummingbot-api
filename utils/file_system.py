@@ -47,9 +47,29 @@ class FileSystemUtil:
         """
         Get the full path by combining base_path with relative path.
         :param path: Relative or absolute path.
-        :return: Full absolute path.
+        :return: Full path string (not yet resolved — callers that need traversal
+                 protection must call _safe_resolve() instead).
         """
         return path if os.path.isabs(path) else os.path.join(self.base_path, path)
+
+    def _safe_resolve(self, path: str) -> str:
+        """
+        Resolve *path* to a canonical absolute path and verify it stays within
+        base_path, preventing directory traversal attacks.
+
+        :param path: Relative or absolute path to resolve.
+        :return: The canonical absolute path as a string.
+        :raises PermissionError: If the resolved path escapes base_path.
+        """
+        full = self._get_full_path(path)
+        resolved = os.path.realpath(os.path.abspath(full))
+        base_resolved = os.path.realpath(os.path.abspath(self.base_path))
+        # Accept exact match (base_path itself) or any path strictly inside it
+        if resolved != base_resolved and not resolved.startswith(base_resolved + os.sep):
+            raise PermissionError(
+                f"Path '{path}' resolves outside the allowed base directory"
+            )
+        return resolved
 
     def list_files(self, directory: str) -> List[str]:
         """
@@ -57,10 +77,10 @@ class FileSystemUtil:
         :param directory: The directory to list files from.
         :return: List of file names in the directory.
         :raises FileNotFoundError: If the directory does not exist.
-        :raises PermissionError: If access is denied to the directory.
+        :raises PermissionError: If the path escapes the base directory.
         """
         excluded_files = ["__init__.py", "__pycache__", ".DS_Store", ".dockerignore", ".gitignore"]
-        dir_path = self._get_full_path(directory)
+        dir_path = self._safe_resolve(directory)
         if not os.path.exists(dir_path):
             raise FileNotFoundError(f"Directory '{directory}' not found")
         if not os.path.isdir(dir_path):
@@ -73,9 +93,9 @@ class FileSystemUtil:
         :param directory: The directory to list folders from.
         :return: List of folder names in the directory.
         :raises FileNotFoundError: If the directory does not exist.
-        :raises PermissionError: If access is denied to the directory.
+        :raises PermissionError: If the path escapes the base directory.
         """
-        dir_path = self._get_full_path(directory)
+        dir_path = self._safe_resolve(directory)
         if not os.path.exists(dir_path):
             raise FileNotFoundError(f"Directory '{directory}' not found")
         if not os.path.isdir(dir_path):
@@ -87,12 +107,12 @@ class FileSystemUtil:
         Creates a folder in a specified directory.
         :param directory: The directory to create the folder in.
         :param folder_name: The name of the folder to be created.
-        :raises PermissionError: If permission is denied to create the folder.
+        :raises PermissionError: If permission is denied or path escapes the base directory.
         :raises OSError: If there's an OS-level error creating the folder.
         """
         if not folder_name or '/' in folder_name or '\\' in folder_name:
             raise ValueError(f"Invalid folder name: '{folder_name}'")
-        folder_path = self._get_full_path(os.path.join(directory, folder_name))
+        folder_path = self._safe_resolve(os.path.join(directory, folder_name))
         os.makedirs(folder_path, exist_ok=True)
 
     def copy_folder(self, src: str, dest: str) -> None:
@@ -101,10 +121,10 @@ class FileSystemUtil:
         :param src: The source folder to copy.
         :param dest: The destination folder to copy to.
         :raises FileNotFoundError: If source folder doesn't exist.
-        :raises PermissionError: If permission is denied.
+        :raises PermissionError: If permission is denied or path escapes the base directory.
         """
-        src_path = self._get_full_path(src)
-        dest_path = self._get_full_path(dest)
+        src_path = self._safe_resolve(src)
+        dest_path = self._safe_resolve(dest)
 
         if not os.path.exists(src_path):
             raise FileNotFoundError(f"Source folder '{src}' not found")
@@ -119,10 +139,10 @@ class FileSystemUtil:
         :param src: The source file to copy.
         :param dest: The destination file to copy to.
         :raises FileNotFoundError: If source file doesn't exist.
-        :raises PermissionError: If permission is denied.
+        :raises PermissionError: If permission is denied or path escapes the base directory.
         """
-        src_path = self._get_full_path(src)
-        dest_path = self._get_full_path(dest)
+        src_path = self._safe_resolve(src)
+        dest_path = self._safe_resolve(dest)
 
         if not os.path.exists(src_path):
             raise FileNotFoundError(f"Source file '{src}' not found")
@@ -141,9 +161,9 @@ class FileSystemUtil:
         :param directory: The directory to delete the folder from.
         :param folder_name: The name of the folder to be deleted.
         :raises FileNotFoundError: If folder doesn't exist.
-        :raises PermissionError: If permission is denied.
+        :raises PermissionError: If permission is denied or path escapes the base directory.
         """
-        folder_path = self._get_full_path(os.path.join(directory, folder_name))
+        folder_path = self._safe_resolve(os.path.join(directory, folder_name))
         if not os.path.exists(folder_path):
             raise FileNotFoundError(f"Folder '{folder_name}' not found in '{directory}'")
         if not os.path.isdir(folder_path):
@@ -156,9 +176,9 @@ class FileSystemUtil:
         :param directory: The directory to delete the file from.
         :param file_name: The name of the file to be deleted.
         :raises FileNotFoundError: If file doesn't exist.
-        :raises PermissionError: If permission is denied.
+        :raises PermissionError: If permission is denied or path escapes the base directory.
         """
-        file_path = self._get_full_path(os.path.join(directory, file_name))
+        file_path = self._safe_resolve(os.path.join(directory, file_name))
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File '{file_name}' not found in '{directory}'")
         if os.path.isdir(file_path):
@@ -169,9 +189,12 @@ class FileSystemUtil:
         """
         Checks if a path exists.
         :param path: The path to check.
-        :return: True if the path exists, False otherwise.
+        :return: True if the path exists and is within base_path, False otherwise.
         """
-        return os.path.exists(self._get_full_path(path))
+        try:
+            return os.path.exists(self._safe_resolve(path))
+        except PermissionError:
+            return False
 
     def add_file(self, directory: str, file_name: str, content: str, override: bool = False) -> None:
         """
@@ -182,15 +205,16 @@ class FileSystemUtil:
         :param override: If True, override the file if it exists.
         :raises ValueError: If file_name is invalid.
         :raises FileExistsError: If file exists and override is False.
-        :raises PermissionError: If permission is denied to write the file.
+        :raises PermissionError: If permission is denied or path escapes the base directory.
         """
         if not file_name or '/' in file_name or '\\' in file_name:
             raise ValueError(f"Invalid file name: '{file_name}'")
 
-        dir_path = self._get_full_path(directory)
+        # Validate the complete destination path (directory + file_name) against base_path
+        file_path = self._safe_resolve(os.path.join(directory, file_name))
+        dir_path = os.path.dirname(file_path)
         os.makedirs(dir_path, exist_ok=True)
 
-        file_path = os.path.join(dir_path, file_name)
         if not override and os.path.exists(file_path):
             raise FileExistsError(f"File '{file_name}' already exists in '{directory}'.")
 
@@ -204,9 +228,9 @@ class FileSystemUtil:
         :param file_name: The name of the file to append to.
         :param content: The content to append to the file.
         :raises FileNotFoundError: If file doesn't exist.
-        :raises PermissionError: If permission is denied.
+        :raises PermissionError: If permission is denied or path escapes the base directory.
         """
-        file_path = self._get_full_path(os.path.join(directory, file_name))
+        file_path = self._safe_resolve(os.path.join(directory, file_name))
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File '{file_name}' not found in '{directory}'")
         if os.path.isdir(file_path):
@@ -221,10 +245,10 @@ class FileSystemUtil:
         :param file_path: The relative path to the file from base_path.
         :return: The content of the file as a string.
         :raises FileNotFoundError: If the file does not exist.
-        :raises PermissionError: If access is denied to the file.
+        :raises PermissionError: If access is denied or path escapes the base directory.
         :raises IsADirectoryError: If the path points to a directory.
         """
-        full_path = self._get_full_path(file_path)
+        full_path = self._safe_resolve(file_path)
         if not os.path.exists(full_path):
             raise FileNotFoundError(f"File '{file_path}' not found")
         if os.path.isdir(full_path):
@@ -238,9 +262,9 @@ class FileSystemUtil:
         Dumps a dictionary to a YAML file.
         :param filename: The file to dump the dictionary into (relative to base_path).
         :param data_dict: The dictionary to dump.
-        :raises PermissionError: If permission is denied to write the file.
+        :raises PermissionError: If permission is denied or path escapes the base directory.
         """
-        file_path = self._get_full_path(filename)
+        file_path = self._safe_resolve(filename)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, 'w', encoding='utf-8') as file:
             yaml.dump(data_dict, file, default_flow_style=False, allow_unicode=True)
@@ -248,12 +272,13 @@ class FileSystemUtil:
     def read_yaml_file(self, file_path: str) -> dict:
         """
         Reads a YAML file and returns the data as a dictionary.
-        :param file_path: The path to the YAML file (relative to base_path or absolute).
+        :param file_path: The path to the YAML file (relative to base_path).
         :return: Dictionary containing the YAML file data.
         :raises FileNotFoundError: If the file doesn't exist.
+        :raises PermissionError: If the path escapes the base directory.
         :raises yaml.YAMLError: If the YAML is invalid.
         """
-        full_path = self._get_full_path(file_path) if not os.path.isabs(file_path) else file_path
+        full_path = self._safe_resolve(file_path)
         if not os.path.exists(full_path):
             raise FileNotFoundError(f"YAML file '{file_path}' not found")
 
@@ -332,11 +357,11 @@ class FileSystemUtil:
     def ensure_file_and_dump_text(self, file_path: str, text: str) -> None:
         """
         Ensures that the directory for the file exists, then writes text to a file.
-        :param file_path: The file path to write to (relative to base_path or absolute).
+        :param file_path: The file path to write to (relative to base_path).
         :param text: The text to write.
-        :raises PermissionError: If permission is denied.
+        :raises PermissionError: If permission is denied or path escapes the base directory.
         """
-        full_path = self._get_full_path(file_path) if not os.path.isabs(file_path) else file_path
+        full_path = self._safe_resolve(file_path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         with open(full_path, "w", encoding='utf-8') as f:
             f.write(text)
@@ -353,12 +378,12 @@ class FileSystemUtil:
     def save_model_to_yml(self, yml_path: str, cm: ClientConfigAdapter) -> None:
         """
         Save a ClientConfigAdapter model to a YAML file.
-        :param yml_path: Path to the YAML file (relative to base_path or absolute).
+        :param yml_path: Path to the YAML file (relative to base_path).
         :param cm: The ClientConfigAdapter to save.
-        :raises PermissionError: If permission is denied to write the file.
+        :raises PermissionError: If permission is denied or path escapes the base directory.
         """
         try:
-            full_path = self._get_full_path(yml_path)
+            full_path = self._safe_resolve(yml_path)
             cm_yml_str = cm.generate_yml_output_str_with_comments()
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
             with open(full_path, "w", encoding="utf-8") as outfile:
@@ -381,9 +406,11 @@ class FileSystemUtil:
         :return: ISO formatted creation time string or None if directory doesn't exist
         """
         import datetime
-        import os
 
-        full_path = self._get_full_path(path)
+        try:
+            full_path = self._safe_resolve(path)
+        except PermissionError:
+            return None
         if not os.path.exists(full_path):
             return None
 
@@ -403,9 +430,10 @@ class FileSystemUtil:
         :param path: The path to list directories from
         :return: List of directory names
         """
-        import os
-
-        full_path = self._get_full_path(path)
+        try:
+            full_path = self._safe_resolve(path)
+        except PermissionError:
+            return []
         if not os.path.exists(full_path):
             return []
 

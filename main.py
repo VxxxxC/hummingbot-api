@@ -88,6 +88,13 @@ username = settings.security.username
 password = settings.security.password
 debug_mode = settings.security.debug_mode
 
+# Emit a loud warning when debug_mode is active so operators cannot miss it
+if debug_mode:
+    logging.warning(
+        "⚠️  DEBUG MODE IS ACTIVE — authentication is DISABLED. "
+        "Do NOT run with DEBUG_MODE=true in production."
+    )
+
 # Security setup
 security = HTTPBasic()
 
